@@ -4,7 +4,7 @@
     "backgroundImage": "",
     "frogStep": 50,
     "obstacleSpawnInterval": 1000,
-    "obstacleSpeed": 9,
+    "obstacleSpeed": 4,
     "maxObstacles": 9,
     "gameWidth": 500,
     "gameHeight": 600,
