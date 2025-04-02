@@ -1,152 +1,239 @@
-// Global config will be loaded externally
+/* ===================== game.js ===================== */
+
 let config;
 
 fetch('config.json')
   .then(response => response.json())
   .then(data => {
     config = data;
-    // Update frog image based on config
-    const frog = document.getElementById('frog');
-    frog.style.backgroundImage = `url('${config.frogImageUrl}')`;
-    // Update game background image if provided
-    const gameContainer = document.getElementById('gameContainer');
-if (config.backgroundImage) {
-  gameContainer.style.backgroundImage = `url('${config.backgroundImage}')`;
-  gameContainer.style.backgroundSize = 'cover';
-  gameContainer.style.backgroundPosition = 'center';
-}
+    
+    // Optionally set frog image
+    const frogElem = document.getElementById('frog');
+    if (config.frogImageUrl) {
+      frogElem.style.backgroundImage = `url('${config.frogImageUrl}')`;
+    }
 
-    // Now initialize the game using the loaded config
+    // Optionally set background image from config
+    const gameContainer = document.getElementById('gameContainer');
+    if (config.backgroundImage) {
+      gameContainer.style.backgroundImage = `url('${config.backgroundImage}')`;
+    }
+
+    // Initialize the game once config is loaded
     FroggerGame.init();
   })
   .catch(err => console.error('Error loading configuration:', err));
 
-
-// The game logic object uses the externally loaded config
 const FroggerGame = {
-  frogX: 0, // will be set in init
+  /* ----------------------------------------------
+   *         Game State Variables & DOM
+   * ---------------------------------------------- */
+  frogX: 0,
   frogY: 0,
   obstacles: [],
+  gameOver: false,
+
+  // DOM elements
   frog: document.getElementById('frog'),
   gameContainer: document.getElementById('gameContainer'),
   winMessage: document.getElementById('winMessage'),
-  
+  loseMessage: document.getElementById('loseMessage'),
+
+  /* ----------------------------------------------
+   *                INIT METHOD
+   * ---------------------------------------------- */
   init() {
-    // Initialize frog position using external config values
-    this.frogX = config.initialFrogX;
-    this.frogY = config.initialFrogY;
-    this.frog.style.left = this.frogX + 'px';
-    this.frog.style.top = this.frogY + 'px';
-    
-    // Set up keyboard controls
+    // Game is not over at start
+    this.gameOver = false;
+
+    // Position frog near bottom center
+    this.centerFrogNearBottom();
+
+    // 1) Set up WASD (or arrow key) controls
     document.addEventListener('keydown', (event) => {
-      switch (event.key) {
-        case 'ArrowUp': this.moveFrog(0, -config.frogStep); break;
-        case 'ArrowDown': this.moveFrog(0, config.frogStep); break;
-        case 'ArrowLeft': this.moveFrog(-config.frogStep, 0); break;
-        case 'ArrowRight': this.moveFrog(config.frogStep, 0); break;
+      switch (event.key.toLowerCase()) {
+        case 'w':
+          this.moveFrog(0, -config.frogStep);
+          event.preventDefault();
+          break;
+        case 's':
+          this.moveFrog(0, config.frogStep);
+          event.preventDefault();
+          break;
+        case 'a':
+          this.moveFrog(-config.frogStep, 0);
+          event.preventDefault();
+          break;
+        case 'd':
+          this.moveFrog(config.frogStep, 0);
+          event.preventDefault();
+          break;
       }
     });
-    
-    // Start the obstacle spawn and movement loops
+
+    // 2) Set up on-screen arrow controls (if buttons exist in your HTML)
+    const arrowUpBtn = document.getElementById('arrowUp');
+    const arrowDownBtn = document.getElementById('arrowDown');
+    const arrowLeftBtn = document.getElementById('arrowLeft');
+    const arrowRightBtn = document.getElementById('arrowRight');
+
+    // If those buttons exist, attach click listeners
+    if (arrowUpBtn) {
+      arrowUpBtn.addEventListener('click', () => {
+        this.moveFrog(0, -config.frogStep);
+      });
+    }
+    if (arrowDownBtn) {
+      arrowDownBtn.addEventListener('click', () => {
+        this.moveFrog(0, config.frogStep);
+      });
+    }
+    if (arrowLeftBtn) {
+      arrowLeftBtn.addEventListener('click', () => {
+        this.moveFrog(-config.frogStep, 0);
+      });
+    }
+    if (arrowRightBtn) {
+      arrowRightBtn.addEventListener('click', () => {
+        this.moveFrog(config.frogStep, 0);
+      });
+    }
+
+    // 3) Start obstacle spawn/move intervals
     this.spawnInterval = setInterval(() => this.createObstacle(), config.obstacleSpawnInterval);
     this.moveInterval = setInterval(() => this.moveObstacles(), 30);
   },
-  
+
+  /* ----------------------------------------------
+   *       CENTER THE FROG NEAR THE BOTTOM
+   * ---------------------------------------------- */
+  centerFrogNearBottom() {
+    const containerWidth = this.gameContainer.clientWidth;
+    const containerHeight = this.gameContainer.clientHeight;
+    const frogWidth = this.frog.offsetWidth;
+    const frogHeight = this.frog.offsetHeight;
+
+    // Center horizontally, 20px from bottom
+    this.frogX = (containerWidth - frogWidth) / 2;
+    this.frogY = containerHeight - frogHeight - 20;
+
+    this.frog.style.left = this.frogX + 'px';
+    this.frog.style.top = this.frogY + 'px';
+  },
+
+  /* ----------------------------------------------
+   *             MOVE THE FROG
+   * ---------------------------------------------- */
   moveFrog(dx, dy) {
+    const containerWidth = this.gameContainer.clientWidth;
+    const containerHeight = this.gameContainer.clientHeight;
+    const frogWidth = this.frog.offsetWidth;
+    const frogHeight = this.frog.offsetHeight;
+
     const newX = this.frogX + dx;
     const newY = this.frogY + dy;
-    // Keep frog within game bounds (assuming frog width is 50px)
-    if (newX >= 0 && newX <= config.gameWidth - 50) {
-      this.frogX = newX;
-    }
-    if (newY >= 0) {
-      this.frogY = newY;
-    }
+
+    // Clamp to container
+    this.frogX = Math.max(0, Math.min(newX, containerWidth - frogWidth));
+    this.frogY = Math.max(0, Math.min(newY, containerHeight - frogHeight));
     this.frog.style.left = this.frogX + 'px';
     this.frog.style.top = this.frogY + 'px';
 
-    // Check win condition (frog reaches top with a small margin)
+    // Win check
     if (this.frogY <= 10) {
-      this.winMessage.style.display = "block";
-      setTimeout(() => this.resetGame(), 2000);
+      this.showWin();
     }
   },
-  
+
+  /* ----------------------------------------------
+   *              CREATE AN OBSTACLE
+   * ---------------------------------------------- */
   createObstacle() {
-    // Create a new obstacle element
+    // Limit obstacles
+    if (this.obstacles.length >= config.maxObstacles) {
+      return;
+    }
+
     const obstacle = document.createElement('div');
     obstacle.classList.add('obstacle');
-    
-    // Select a random word for the obstacle
-    const word = config.obstacleWords[Math.floor(Math.random() * config.obstacleWords.length)];
-    obstacle.textContent = word;
-    
-    // Determine obstacle width based on word length (minimum 100px)
-    const obstacleWidth = Math.max(100, word.length * 15);
-    obstacle.style.width = obstacleWidth + 'px';
-    obstacle.style.fontSize = "16px";
-    
-    // All obstacles spawn at this vertical position
-    const spawnTop = -50;
+
+    // Choose random obstacle from config
+    let selected;
+    if (config.obstacles && config.obstacles.length) {
+      selected = config.obstacles[Math.floor(Math.random() * config.obstacles.length)];
+    } else {
+      selected = { type: 'text', content: 'Default' };
+    }
+
+    // Set obstacle width
+    obstacle.style.width = config.obstacleWidth + 'px';
+
+    // Determine obstacle height
+    let obstacleHeight;
+    if (selected.type === 'text') {
+      obstacle.textContent = selected.content;
+      obstacle.style.backgroundColor = '#e74c3c';
+      obstacle.style.color = '#fff';
+      // Estimate text lines
+      const lines = Math.ceil(selected.content.length / 15);
+      obstacleHeight = lines * 26 + 10;
+    } else {
+      // Image obstacle
+      obstacle.style.backgroundImage = `url('${selected.url}')`;
+      obstacle.style.backgroundSize = 'cover';
+      obstacle.style.backgroundPosition = 'center';
+      obstacle.textContent = '';
+      obstacleHeight = config.obstacleHeight;
+    }
+    obstacle.style.height = obstacleHeight + 'px';
+
+    // Spawn top (just above container)
+    const spawnTop = -obstacleHeight;
     obstacle.style.top = spawnTop + 'px';
-    
-    // In the more challenging mode, sometimes we do NOT enforce the reserved safe gap.
-    // With a 70% chance the gap is enforced and 30% chance it is skipped.
-    const enforceReservedGap = Math.random() > 0.3; // 70% chance to enforce safe gap
-    
-    // Define the reserved gap for the frog (if enforced). We assume frog width = 50px.
-    const frogWidth = 50;
-    const reservedGap = enforceReservedGap ? { left: config.initialFrogX, right: config.initialFrogX + frogWidth } : null;
-    
-    let maxLeft = config.gameWidth - obstacleWidth;
+
+    // 70% chance safe zone near frog's current X
+    const enforceReservedGap = Math.random() > 0.3;
+    const frogSafeGap = enforceReservedGap
+      ? { left: this.frogX, right: this.frogX + this.frog.offsetWidth }
+      : null;
+
+    // Compute possible horizontal range
+    const containerWidth = this.gameContainer.clientWidth;
+    const maxLeft = containerWidth - config.obstacleWidth;
+
     let left = 0;
     let attempts = 0;
-    const maxAttempts = 10;
     let overlapping = false;
-    
-    // Helper function to get the candidate rectangle for the new obstacle
+
+    // Helper
     const newRect = (testLeft) => ({
       left: testLeft,
-      right: testLeft + obstacleWidth,
+      right: testLeft + config.obstacleWidth,
       top: spawnTop,
-      bottom: spawnTop + config.obstacleHeight,
+      bottom: spawnTop + obstacleHeight
     });
-    
-    // Find a random horizontal position that:
-    // 1. Does not overlap any existing obstacle in the spawn row.
-    // 2. If enforced, does not cover the reserved gap.
+
     do {
       left = Math.random() * maxLeft;
       overlapping = false;
       const testRect = newRect(left);
-      
-      // Check reserved gap: reject if the new obstacle would cover the reserved area.
-      if (reservedGap) {
-        if (testRect.left < reservedGap.right && testRect.right > reservedGap.left) {
+
+      // Check frog safe zone
+      if (frogSafeGap) {
+        if (testRect.left < frogSafeGap.right && testRect.right > frogSafeGap.left) {
           overlapping = true;
         }
       }
-      
-      // Also check for overlap with existing obstacles in the spawn row
+
+      // Overlap check with existing obstacles in spawn row
       for (let i = 0; i < this.obstacles.length; i++) {
         const obs = this.obstacles[i];
-        const obsTop = parseInt(obs.style.top);
-        // Only check obstacles that are near the spawn row
-        if (obsTop < spawnTop + config.obstacleHeight) {
-          const obsLeft = parseInt(obs.style.left);
-          const obsWidth = parseInt(obs.style.width);
-          const obsRect = {
-            left: obsLeft,
-            right: obsLeft + obsWidth,
-            top: obsTop,
-            bottom: obsTop + config.obstacleHeight,
-          };
+        const obsTop = parseInt(obs.style.top, 10);
+        if (obsTop <= spawnTop + obstacleHeight) {
+          const obsLeft = parseInt(obs.style.left, 10);
           if (
-            testRect.left < obsRect.right &&
-            testRect.right > obsRect.left &&
-            testRect.top < obsRect.bottom &&
-            testRect.bottom > obsRect.top
+            testRect.left < obsLeft + config.obstacleWidth &&
+            testRect.right > obsLeft
           ) {
             overlapping = true;
             break;
@@ -154,33 +241,41 @@ const FroggerGame = {
         }
       }
       attempts++;
-    } while (overlapping && attempts < maxAttempts);
-    
+    } while (overlapping && attempts < 10);
+
     obstacle.style.left = left + 'px';
     this.gameContainer.appendChild(obstacle);
     this.obstacles.push(obstacle);
   },
-  
+
+  /* ----------------------------------------------
+   *           MOVE EXISTING OBSTACLES
+   * ---------------------------------------------- */
   moveObstacles() {
-    this.obstacles.forEach((obstacle, index) => {
-      let currentY = parseInt(obstacle.style.top);
+    for (let i = this.obstacles.length - 1; i >= 0; i--) {
+      const obstacle = this.obstacles[i];
+      let currentY = parseInt(obstacle.style.top, 10);
       currentY += config.obstacleSpeed;
       obstacle.style.top = currentY + 'px';
 
-      // Remove obstacle if it goes out of the game area
-      if (currentY > config.gameHeight) {
+      // Remove if off bottom
+      if (currentY > this.gameContainer.clientHeight) {
         obstacle.remove();
-        this.obstacles.splice(index, 1);
+        this.obstacles.splice(i, 1);
       }
 
-      // Check for collision between the frog and an obstacle
-      if (this.checkCollision(this.frog, obstacle)) {
-        alert("Game Over! Try again.");
-        this.resetGame();
+      // Collision check
+      if (!this.gameOver && this.frogY <= this.gameContainer.clientHeight) {
+        if (this.checkCollision(this.frog, obstacle)) {
+          this.showLose();
+        }
       }
-    });
+    }
   },
-  
+
+  /* ----------------------------------------------
+   *             COLLISION CHECK
+   * ---------------------------------------------- */
   checkCollision(frogElem, obstacleElem) {
     const frogRect = frogElem.getBoundingClientRect();
     const obstacleRect = obstacleElem.getBoundingClientRect();
@@ -191,21 +286,49 @@ const FroggerGame = {
       frogRect.right < obstacleRect.left
     );
   },
-  
+
+  /* ----------------------------------------------
+   *                 SHOW WIN/LOSE
+   * ---------------------------------------------- */
+  showWin() {
+    if (this.gameOver) return;
+    this.gameOver = true;
+    this.winMessage.style.display = 'block';
+    clearInterval(this.spawnInterval);
+    clearInterval(this.moveInterval);
+    setTimeout(() => this.resetGame(), 2000);
+  },
+
+  showLose() {
+    if (this.gameOver) return;
+    this.gameOver = true;
+    this.loseMessage.style.display = 'block';
+    clearInterval(this.spawnInterval);
+    clearInterval(this.moveInterval);
+    setTimeout(() => this.resetGame(), 2000);
+  },
+
+  /* ----------------------------------------------
+   *                   RESET GAME
+   * ---------------------------------------------- */
   resetGame() {
-    // Reset frog's position
-    this.frogX = config.initialFrogX;
-    this.frogY = config.initialFrogY;
-    this.frog.style.left = this.frogX + 'px';
-    this.frog.style.top = this.frogY + 'px';
-    
-    // Remove all obstacles and hide the win message
-    this.obstacles.forEach(obstacle => obstacle.remove());
+    // Remove obstacles
+    this.obstacles.forEach(ob => ob.remove());
     this.obstacles = [];
-    this.winMessage.style.display = "none";
+    this.winMessage.style.display = 'none';
+    this.loseMessage.style.display = 'none';
+    this.gameOver = false;
+
+    // Re-center frog near bottom
+    this.centerFrogNearBottom();
+
+    // Restart intervals
+    this.spawnInterval = setInterval(() => this.createObstacle(), config.obstacleSpawnInterval);
+    this.moveInterval = setInterval(() => this.moveObstacles(), 30);
   }
 };
 
+// DOMContentLoaded (Optional if you want to ensure DOM is ready)
 document.addEventListener('DOMContentLoaded', () => {
-  // The game will initialize after the external config is loaded
+  // The actual game init occurs after config.json is loaded above
 });
